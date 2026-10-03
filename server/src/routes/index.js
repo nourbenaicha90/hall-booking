@@ -2,6 +2,11 @@ import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import path from 'path';
+
+import { v2 as cloudinary } from 'cloudinary';
+import { CloudinaryStorage } from 'multer-storage-cloudinary';
+
+
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { body, param } from 'express-validator';
@@ -114,19 +119,53 @@ admin.post('/admins', superAdminOnly,
   body('name').trim().notEmpty(), email, password(), validate, wrap(D.createAdmin));
 
 // رفع الصور (Multer). لاستخدام Cloudinary استبدل storage بـ multer-storage-cloudinary
+// const upload = multer({
+//   storage: multer.diskStorage({
+//     destination: path.join(dir, '..', '..', 'uploads'),
+//     filename: (req, file, cb) => cb(null, crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase()),
+//   }),
+//   limits: { fileSize: 5 * 1024 * 1024 },
+//   fileFilter: (req, file, cb) =>
+//     /^image\/(jpe?g|png|webp|gif)$/.test(file.mimetype) ? cb(null, true) : cb(new HttpError(422, 'الملف يجب أن يكون صورة (JPG / PNG / WEBP)')),
+// });
+// admin.post('/upload', upload.single('image'), (req, res) => {
+//   if (!req.file) throw new HttpError(422, 'لم يتم اختيار ملف');
+//   res.status(201).json({ url: `/uploads/${req.file.filename}` });
+// });
+
+
+// إعداد Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_NAME,
+  api_key: process.env.CLOUDINARY_KEY,
+  api_secret: process.env.CLOUDINARY_SECRET,
+});
+
+// تخزين الصور على Cloudinary
+const storage = new CloudinaryStorage({
+  cloudinary: cloudinary,
+  params: {
+    folder: 'hall-booking',
+    allowed_formats: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+    transformation: [{ width: 1600, crop: 'limit' }],
+  },
+});
+
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: path.join(dir, '..', '..', 'uploads'),
-    filename: (req, file, cb) => cb(null, crypto.randomBytes(12).toString('hex') + path.extname(file.originalname).toLowerCase()),
-  }),
+  storage,
   limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, cb) =>
-    /^image\/(jpe?g|png|webp|gif)$/.test(file.mimetype) ? cb(null, true) : cb(new HttpError(422, 'الملف يجب أن يكون صورة (JPG / PNG / WEBP)')),
+    /^image\/(jpe?g|png|webp|gif)$/.test(file.mimetype) 
+      ? cb(null, true) 
+      : cb(new HttpError(422, 'الملف يجب أن يكون صورة (JPG / PNG / WEBP)')),
 });
+
 admin.post('/upload', upload.single('image'), (req, res) => {
   if (!req.file) throw new HttpError(422, 'لم يتم اختيار ملف');
-  res.status(201).json({ url: `/uploads/${req.file.filename}` });
+  // Cloudinary يعيد الرابط الكامل في req.file.path
+  res.status(201).json({ url: req.file.path });
 });
+
 
 r.use('/admin', admin);
 export default r;
